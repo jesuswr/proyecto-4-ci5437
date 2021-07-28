@@ -16,8 +16,8 @@
 
 using namespace std;
 
-unsigned expanded = 0;
-unsigned generated = 0;
+unsigned long long expanded = 0;
+unsigned long long generated = 0;
 int tt_threshold = 32; // threshold to save entries in TT
 const int INF = 200;
 
@@ -90,7 +90,7 @@ int main(int argc, const char **argv) {
 
     // Run algorithm along PV (bacwards)
     cout << "Moving along PV:" << endl;
-    for ( int i = 7; i <= 7; ++i ) {
+    for ( int i = 0; i <= npv; ++i ) {
         //cout << pv[i];
         int value = 0;
         TTable[0].clear();
@@ -289,6 +289,7 @@ struct sss_state {
         othello = ot;
         father = fat;
         color = col;
+        root = false;
 
         auto moves_aux = othello.get_moves(color == 1);
         for (int i = 0; i < (int)moves_aux.size(); ++i)
@@ -316,11 +317,8 @@ int sss_star(state_t n, int color, int boud) {
         bool live = get<2>(pq.top());
         pq.pop();
 
-        //cout << endl;
-        //cout << "LOOP" << endl;
-        //cout << state << " " << state->father << " " << h << " " << live << endl;
-        //cout << state->othello;
-
+        // esta es la parte de purgar hijos, la implemente asi: si tu padre purgo a sus hijos,
+        // entonces purgas a los tuyos y no entras de nuevo en la siguiente parte del codigo
         if (state->father != nullptr && ignore_childs.find(state->father) != ignore_childs.end()) {
             ignore_childs.insert(state);
             continue;
@@ -328,42 +326,35 @@ int sss_star(state_t n, int color, int boud) {
 
         if (live) {
             if (state->othello.terminal()) {
-                //printf("\t1\n");
                 pq.push({min(state->othello.value(), h), state, false});
             }
-            else if (state->color == -1) { // min
-                //printf("\t2\n");
+            else if (state->color == -1) {  //min
                 state_t child_othello = state->othello.move(state->color == 1, state->moves.front());
                 state->moves.pop_front();
 
                 sss_state *child = new sss_state(child_othello, state, -state->color);
                 pq.push({h, child, true});
             }
-            else if (state->color == 1) { // max
-                //printf("\t3\n");
+            else if (state->color == 1) {  //max
                 for (auto move : state->moves) {
                     state_t child_othello = state->othello.move(state->color == 1, move);
 
                     sss_state *child = new sss_state(child_othello, state, -state->color);
                     pq.push({h, child, true});
                 }
-                state->moves.clear();
             }
         }
         else {
             if (state->root) {
-                //printf("\t4\n");
                 ret = h;
                 break;
             }
-            else if (state->color == -1) { // min
-                //printf("\t5\n");
+            else if (state->color == -1) {  //min
                 ignore_childs.insert(state->father);
                 pq.push({h, state->father, false});
             }
-            else if (state->color == 1) { // max
+            else if (state->color == 1) {  //max
                 if (!state->father->moves.empty()) {
-                    //printf("\t7\n");
                     state_t brother_othello = state->father->othello.move(state->father->color == 1, state->father->moves.front());
                     state->father->moves.pop_front();
 
@@ -371,8 +362,7 @@ int sss_star(state_t n, int color, int boud) {
                     pq.push({h, brother, true});
                 }
                 else {
-                    //printf("\t8\n");
-                    pq.push({h, state->father, 0});
+                    pq.push({h, state->father, false});
                 }
             }
         }
@@ -380,3 +370,5 @@ int sss_star(state_t n, int color, int boud) {
 
     return ret;
 }
+
+
