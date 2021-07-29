@@ -22,10 +22,10 @@ int tt_threshold = 32; // threshold to save entries in TT
 const int INF = 200;
 
 // Transposition table (it is not necessary to implement TT)
+enum { EXACT, LOWER, UPPER };
 struct stored_info_t {
     int value_;
     int type_;
-    enum { EXACT, LOWER, UPPER };
     stored_info_t(int value = -100, int type = LOWER) : value_(value), type_(type) { }
 };
 
@@ -44,10 +44,11 @@ hash_table_t TTable[2];
 //int minmax(state_t state, int depth, bool use_tt = false);
 //int maxmin(state_t state, int depth, bool use_tt = false);
 int negamax(state_t state, int color);
-int negamax(state_t state, int alpha, int beta, int color);
+int negamax(state_t state, int alpha, int beta, int color, bool use_tt = false);
 int scout(state_t state, int color);
 int negascout(state_t state, int alpha, int beta, int color);
 int sss_star(state_t state, int color, int bound);
+int mtdf(state_t root, int color, int f);
 
 int main(int argc, const char **argv) {
     state_t pv[128];
@@ -76,6 +77,9 @@ int main(int argc, const char **argv) {
         cout << pv[npv - i];
 #endif
 
+    // for MTD(f)
+    int f;
+
     // Print name of algorithm
     cout << "Algorithm: ";
     if ( algorithm == 1 )
@@ -86,6 +90,12 @@ int main(int argc, const char **argv) {
         cout << "Scout";
     else if ( algorithm == 4 )
         cout << "Negascout";
+    else if ( algorithm == 5 )
+        cout << "SSS*";
+    else if ( algorithm == 6 ) {
+        f = atoi(argv[2]);
+        cout << "MTD(f) with " << f;
+    }
     cout << (use_tt ? " w/ transposition table" : "") << endl;
 
     // Run algorithm along PV (bacwards)
@@ -111,6 +121,8 @@ int main(int argc, const char **argv) {
                 value = color * negascout(pv[i], -INF, INF, color);
             } else if (algorithm == 5 ) {
                 value = sss_star(pv[i], color, INF);
+            } else if (algorithm == 6) {
+                value = color * mtdf(pv[i], color, f);
             }
         } catch ( const bad_alloc &e ) {
             cout << "size TT[0]: size=" << TTable[0].size() << ", #buckets=" << TTable[0].bucket_count() << endl;
@@ -157,8 +169,27 @@ int negamax(state_t state, int color) {
     return score;
 }
 
-int negamax(state_t state, int alpha, int beta, int color) {
+int negamax(state_t state, int alpha, int beta, int color, bool use_tt) {
     ++generated;
+    int original_alpha = alpha;
+
+    if (use_tt && TTable[color == 1].find(state) != TTable[color == 1].end()) {
+        auto tup = TTable[color == 1][state];
+
+        if (tup.type_ == EXACT) {
+            return tup.value_;
+        }
+        else if (tup.type_ == UPPER) {
+            beta = min(beta, tup.value_);
+        }
+        else if (tup.type_ == LOWER) {
+            alpha = max(alpha, tup.value_);
+        }
+
+        if (alpha >= beta)
+            return tup.value_;
+    }
+
     if (state.terminal())
         return color * state.value();
 
@@ -170,7 +201,7 @@ int negamax(state_t state, int alpha, int beta, int color) {
         moved = true;
         score = max(
                     score,
-                    -negamax(state.move(color == 1, p), -beta, -alpha, -color)
+                    -negamax(state.move(color == 1, p), -beta, -alpha, -color, use_tt)
                 );
         alpha = max(alpha, score);
         if (alpha >= beta)
@@ -178,7 +209,16 @@ int negamax(state_t state, int alpha, int beta, int color) {
     }
     // si no logre moverme sigo en el mismo estado pero cambio el color
     if (!moved)
-        score = -negamax(state, -beta, -alpha, -color);
+        score = -negamax(state, -beta, -alpha, -color, use_tt);
+
+    if (use_tt) {
+        stored_info_t tup = {score, EXACT};
+        if (score <= original_alpha)
+            tup.type_ = UPPER;
+        else if (score >= beta)
+            tup.type_ = LOWER;
+        TTable[color == 1][state] = tup;
+    }
 
     ++expanded;
     return score;
@@ -372,3 +412,16 @@ int sss_star(state_t n, int color, int boud) {
 }
 
 
+
+// mtd(f) the better the guess for the f value, the quicker the solution is found
+int mtdf(state_t root, int color, int f) {
+    TTable[0].clear();
+    TTable[1].clear();
+    int bound[2] = { -INF, INF};
+    do {
+        int beta = f + (f == bound[0]);
+        f = negamax(root, beta - 1, beta, color, true);
+        bound[f < beta] = f;
+    } while (bound[0] < bound[1]);
+    return f;
+}
