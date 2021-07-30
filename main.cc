@@ -415,8 +415,6 @@ int sss_star(state_t n, int color, int boud) {
 
 // mtd(f) the better the guess for the f value, the quicker the solution is found
 int mtdf(state_t root, int color, int f) {
-    TTable[0].clear();
-    TTable[1].clear();
     int bound[2] = { -INF, INF};
     do {
         int beta = f + (f == bound[0]);
