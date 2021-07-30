@@ -114,7 +114,7 @@ int main(int argc, const char **argv) {
             if ( algorithm == 1 ) {
                 value = color * negamax(pv[i], color);
             } else if ( algorithm == 2 ) {
-                value = color * negamax(pv[i], -INF, INF, color);
+                value = color * negamax(pv[i], -INF, INF, color, use_tt);
             } else if ( algorithm == 3 ) {
                 value = scout(pv[i], color);
             } else if ( algorithm == 4 ) {
@@ -322,6 +322,7 @@ struct sss_state {
     state_t othello;
     int color;
     bool root;
+    bool ignored;
     sss_state *father;
     list<int> moves;
 
@@ -330,6 +331,7 @@ struct sss_state {
         father = fat;
         color = col;
         root = false;
+        ignored = false;
 
         auto moves_aux = othello.get_moves(color == 1);
         for (int i = 0; i < (int)moves_aux.size(); ++i)
@@ -337,20 +339,29 @@ struct sss_state {
         if (moves.size() == 0)
             moves.push_back(INF);
     }
+
+    bool to_ignore() {
+
+        if (!ignored && father != nullptr) {
+            ignored |= father->to_ignore();
+        }
+
+        return ignored;
+    }
 };
 
 
 int sss_star(state_t n, int color, int boud) {
     // h value, state * and bool (true is live, false is dead)
     priority_queue<tuple<int, sss_state*, bool>> pq;
-
+    
+    ++generated;
     sss_state *r = new sss_state(n, nullptr, color);
     r->root = true;
     pq.push({INF, r, true});
 
     int ret = -42;
 
-    set<sss_state*> ignore_childs;
     while (true) {
         int h = get<0>(pq.top());
         sss_state *state = get<1>(pq.top());
@@ -359,8 +370,7 @@ int sss_star(state_t n, int color, int boud) {
 
         // esta es la parte de purgar hijos, la implemente asi: si tu padre purgo a sus hijos,
         // entonces purgas a los tuyos y no entras de nuevo en la siguiente parte del codigo
-        if (state->father != nullptr && ignore_childs.find(state->father) != ignore_childs.end()) {
-            ignore_childs.insert(state);
+        if (state != nullptr && !state->to_ignore()) {
             continue;
         }
 
@@ -369,6 +379,7 @@ int sss_star(state_t n, int color, int boud) {
                 pq.push({min(state->othello.value(), h), state, false});
             }
             else if (state->color == -1) {  //min
+                ++generated;
                 state_t child_othello = state->othello.move(state->color == 1, state->moves.front());
                 state->moves.pop_front();
 
@@ -377,12 +388,14 @@ int sss_star(state_t n, int color, int boud) {
             }
             else if (state->color == 1) {  //max
                 for (auto move : state->moves) {
+                    ++generated;
                     state_t child_othello = state->othello.move(state->color == 1, move);
-
+        
                     sss_state *child = new sss_state(child_othello, state, -state->color);
                     pq.push({h, child, true});
                 }
             }
+            ++expanded;
         }
         else {
             if (state->root) {
@@ -390,14 +403,14 @@ int sss_star(state_t n, int color, int boud) {
                 break;
             }
             else if (state->color == -1) {  //min
-                ignore_childs.insert(state->father);
+                state->father->ignored = true;
                 pq.push({h, state->father, false});
             }
             else if (state->color == 1) {  //max
                 if (!state->father->moves.empty()) {
                     state_t brother_othello = state->father->othello.move(state->father->color == 1, state->father->moves.front());
                     state->father->moves.pop_front();
-
+                    ++generated;
                     sss_state *brother = new sss_state(brother_othello, state->father, -state->father->color);
                     pq.push({h, brother, true});
                 }
@@ -407,7 +420,7 @@ int sss_star(state_t n, int color, int boud) {
             }
         }
     }
-
+    
     return ret;
 }
 
